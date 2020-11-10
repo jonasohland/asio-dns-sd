@@ -11,7 +11,9 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
     void run()
     {
         boost::system::error_code ec;
-        browser_.open(boost::asio::mdns::network_interface("en8"),
+        
+        // open browser for http services on all interfaces
+        browser_.open(boost::asio::mdns::network_interface::all(),
                       "_http._tcp", "local", ec);
 
         if (ec) {
@@ -19,6 +21,7 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
             return;
         }
 
+        // start browsing
         do_browse();
     }
 
@@ -35,12 +38,13 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
             std::cout << "Browse error: " << ec.message() << "\n";
             return;
         }
-
+        
         for (const auto& record : browser_.records()) {
             std::cout << "Found service: " << record.fqdn()
                       << " interface: " << record.interface().name() << "\n";
         }
 
+        // do more browsing
         do_browse();
     }
 
@@ -50,9 +54,13 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
 int main()
 {
     boost::asio::io_context ctx;
+    
+    // start browser
     std::make_shared<nbrowser>(ctx)->run();
+    
+    // run context in this thread
     ctx.run();
     
-    
+    // bye
     return 0;
 }
