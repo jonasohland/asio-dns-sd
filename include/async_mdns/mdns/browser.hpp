@@ -41,7 +41,7 @@ namespace boost {
                 void open(network_interface&& interface,
                           const std::string& type, const std::string& domain)
                 {
-                    DNSServiceErrorType err = open_impl(0, type, domain);
+                    DNSServiceErrorType err = open_impl(interface.index(), type, domain);
                     boost::asio::detail::throw_error(make_mdns_error(err));
                     stream.assign(DNSServiceRefSockFD(ref));
                 }
@@ -50,7 +50,7 @@ namespace boost {
                           const std::string& type, const std::string& domain,
                           boost::system::error_code& errc) BOOST_NOEXCEPT
                 {
-                    DNSServiceErrorType err = open_impl(0, type, domain);
+                    DNSServiceErrorType err = open_impl(interface.index(), type, domain);
                     errc.assign(err, get_dns_service_error_category());
 
                     if (errc)
@@ -111,7 +111,6 @@ namespace boost {
                 }
 
                 std::vector<service_record> last_records_;
-                ;
                 DNSServiceRef ref;
                 posix::basic_stream_descriptor<Executor> stream;
             };

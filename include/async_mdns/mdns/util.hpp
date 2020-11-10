@@ -18,7 +18,7 @@ namespace boost {
                         return -1;
 
                     ifaddrs *addrs, *firstaddr, *found;
-                    int ret   = getifaddrs(&addrs);
+                    getifaddrs(&addrs);
                     firstaddr = addrs;
                     found     = nullptr;
 

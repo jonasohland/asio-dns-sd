@@ -11,7 +11,7 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
     void run()
     {
         boost::system::error_code ec;
-        browser_.open(boost::asio::ip::address::from_string("0.0.0.0"),
+        browser_.open(boost::asio::mdns::network_interface("en8"),
                       "_http._tcp", "local", ec);
 
         if (ec) {
@@ -52,5 +52,7 @@ int main()
     boost::asio::io_context ctx;
     std::make_shared<nbrowser>(ctx)->run();
     ctx.run();
+    
+    
     return 0;
 }
