@@ -1,6 +1,9 @@
 #include "mdns.hpp"
 #include <iostream>
 
+// this file is only here to force XCode to compile the headers
+// and testing the whole thing during development
+
 class nbrowser: public std::enable_shared_from_this<nbrowser> {
   public:
     nbrowser(boost::asio::io_context& ctx)
