@@ -4,7 +4,7 @@
 
 namespace asio {
     namespace boost {
-        namespace mdns {
+        namespace dnssd {
 
         }
     }    // namespace boost

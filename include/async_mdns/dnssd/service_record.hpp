@@ -5,7 +5,7 @@
 
 namespace boost {
     namespace asio {
-        namespace mdns {
+        namespace dnssd {
 
             class service_record {
               public:
@@ -59,6 +59,6 @@ namespace boost {
                 unsigned int interface_;
             };
 
-        }    // namespace mdns
+        }    // namespace dnssd
     }        // namespace asio
 }    // namespace boost

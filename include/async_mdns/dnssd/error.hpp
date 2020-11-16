@@ -6,7 +6,7 @@
 
 namespace boost {
     namespace asio {
-        namespace mdns {
+        namespace dnssd {
 
             enum class service_error {
                 no_error                     = 0,
@@ -106,12 +106,12 @@ namespace boost {
                 return instance;
             }
 
-            boost::system::error_code make_mdns_error(DNSServiceErrorType err)
+            boost::system::error_code make_dnssd_error(DNSServiceErrorType err)
             {
                 return boost::system::error_code(
                     err, get_dns_service_error_category());
             }
 
-        }    // namespace mdns
+        }    // namespace dnssd
     }        // namespace asio
 }    // namespace boost

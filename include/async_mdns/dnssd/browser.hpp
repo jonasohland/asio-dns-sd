@@ -15,7 +15,7 @@
 
 namespace boost {
     namespace asio {
-        namespace mdns {
+        namespace dnssd {
 
             template <typename Executor = executor>
             class basic_browser {
@@ -48,7 +48,7 @@ namespace boost {
                 {
                     DNSServiceErrorType err
                         = open_impl(interface.index(), type, domain);
-                    boost::asio::detail::throw_error(make_mdns_error(err));
+                    boost::asio::detail::throw_error(make_dnssd_error(err));
                     stream.assign(DNSServiceRefSockFD(ref));
                 }
 
@@ -76,7 +76,7 @@ namespace boost {
                             if (ec)
                                 handler(ec);
                             else
-                                handler(make_mdns_error(
+                                handler(make_dnssd_error(
                                     DNSServiceProcessResult(ref)));
                         });
                 }
@@ -123,6 +123,6 @@ namespace boost {
             };
 
             using browser = basic_browser<>;
-        }    // namespace mdns
+        }    // namespace dnssd
     }        // namespace asio
 }    // namespace boost

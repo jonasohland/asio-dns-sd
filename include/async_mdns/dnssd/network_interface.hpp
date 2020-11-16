@@ -5,7 +5,7 @@
 #ifndef _WIN32
 namespace boost {
     namespace asio {
-        namespace mdns {
+        namespace dnssd {
 
             class network_interface {
 
@@ -17,30 +17,35 @@ namespace boost {
                 {
                     return network_interface(0);
                 }
-                
+
                 static std::vector<network_interface> list()
                 {
                     std::vector<network_interface> ifs;
                     struct if_nameindex *if_ni, *i;
-    
+
                     if_ni = ::if_nameindex();
-                    
+
                     if (if_ni == 0)
                         return ifs;
-                    
-                    for (i = if_ni; ! (i->if_index == 0 && i->if_name == NULL); i++)
+
+                    for (i = if_ni; !(i->if_index == 0 && i->if_name == NULL);
+                         i++)
                         ifs.push_back(network_interface::from_ifnameindex(i));
-                    
+
+                    ::if_freenameindex(if_ni);
                     return ifs;
                 }
-                
-                static network_interface from_ifnameindex(struct if_nameindex* if_ni)
+
+                static network_interface
+                from_ifnameindex(struct if_nameindex* if_ni)
                 {
                     return network_interface(if_ni->if_index, if_ni->if_name);
                 }
-                
-                explicit network_interface(index_type index, const std::string& name)
-                    :index_(index), name_(name)
+
+                explicit network_interface(index_type index,
+                                           const std::string& name)
+                    : index_(index)
+                    , name_(name)
                 {
                     fill_addr_from_ifname(name.c_str(), addresses_);
                 }
@@ -48,12 +53,12 @@ namespace boost {
                 explicit network_interface(const ip::address& ip_addr)
                 {
                     addresses_.push_back(ip_addr);
-                    
+
                     ::ifaddrs* addrs;
                     ::getifaddrs(&addrs);
-                    
+
                     name_ = find_name_by_addr(addrs, ip_addr);
-                    
+
                     if (!name_.empty()) {
                         get_index_from_name();
                         fill_addr_from_ifname(name_.c_str(), addresses_);
@@ -91,12 +96,12 @@ namespace boost {
                     return name_;
                 }
 
-                bool index_resolved() const
+                bool index_specified() const
                 {
                     return index_;
                 }
 
-                bool ip_address_resolved() const
+                bool address_specified() const
                 {
                     return addresses_.empty();
                 }
@@ -244,7 +249,7 @@ namespace boost {
                 std::string name_;
                 std::vector<ip::address> addresses_;
             };
-        }    // namespace mdns
+        }    // namespace dnssd
     }        // namespace asio
 }    // namespace boost
 #endif

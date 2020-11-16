@@ -1,4 +1,4 @@
-#include "mdns.hpp"
+#include "dnssd.hpp"
 #include <iostream>
 
 // this file is only here to force Xcode to compile the headers
@@ -16,8 +16,8 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
         boost::system::error_code ec;
 
         // open browser for http services on all interfaces
-        browser_.open(boost::asio::mdns::network_interface::all(), "_http._tcp",
-                      "local", ec);
+        browser_.open(boost::asio::dnssd::network_interface::all(),
+                      "_http._tcp", "local", ec);
 
         if (ec) {
             std::cerr << ec.message() << "\n";
@@ -51,19 +51,19 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
         do_browse();
     }
 
-    boost::asio::mdns::browser browser_;
+    boost::asio::dnssd::browser browser_;
 };
 
 int main()
 {
     boost::asio::io_context ctx;
-    
+
     // start browser
     std::make_shared<nbrowser>(ctx)->run();
-    
+
     // run context in this thread
     ctx.run();
-    
+
     // bye
     return 0;
 }

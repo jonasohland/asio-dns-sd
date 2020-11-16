@@ -6,7 +6,7 @@
 
 namespace boost {
     namespace asio {
-        namespace mdns {
+        namespace dnssd {
             namespace detail {
 
                 int ip_to_ifname(const ip::address& addr, std::string& ifname)
@@ -67,6 +67,6 @@ namespace boost {
                 }
 
             }    // namespace detail
-        }        // namespace mdns
+        }        // namespace dnssd
     }            // namespace asio
 }    // namespace boost
