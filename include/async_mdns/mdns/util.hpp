@@ -60,6 +60,12 @@ namespace boost {
                     return if_index_from_ifname(ifname);
                 }
 
+                int ip6_compare(const struct in6_addr* lhs,
+                                const struct in6_addr* rhs)
+                {
+                    return memcmp(lhs, rhs, 16);
+                }
+
             }    // namespace detail
         }        // namespace mdns
     }            // namespace asio

@@ -7,61 +7,87 @@ namespace boost {
     namespace asio {
         namespace mdns {
 
-
             class network_interface {
 
               public:
-                
+                using index_type          = unsigned int;
+                using native_address_type = unsigned long;
+
                 static network_interface all()
                 {
                     return network_interface(0);
                 }
                 
-                using index_type = unsigned int;
-                
-                explicit network_interface(const ip::address& ip_addr)
-                    : addr_(ip_addr)
+                static std::vector<network_interface> list()
                 {
+                    std::vector<network_interface> ifs;
+                    struct if_nameindex *if_ni, *i;
+    
+                    if_ni = ::if_nameindex();
+                    
+                    if (if_ni == 0)
+                        return ifs;
+                    
+                    for (i = if_ni; ! (i->if_index == 0 && i->if_name == NULL); i++)
+                        ifs.push_back(network_interface::from_ifnameindex(i));
+                    
+                    return ifs;
+                }
+                
+                static network_interface from_ifnameindex(struct if_nameindex* if_ni)
+                {
+                    return network_interface(if_ni->if_index, if_ni->if_name);
+                }
+                
+                explicit network_interface(index_type index, const std::string& name)
+                    :index_(index), name_(name)
+                {
+                    fill_addr_from_ifname(name.c_str(), addresses_);
                 }
 
-                explicit network_interface(const ip::address& ip_addr,
-                                  unsigned int index)
-                    : index_(index)
-                    , addr_(ip_addr)
+                explicit network_interface(const ip::address& ip_addr)
                 {
+                    addresses_.push_back(ip_addr);
+                    
+                    ::ifaddrs* addrs;
+                    ::getifaddrs(&addrs);
+                    
+                    name_ = find_name_by_addr(addrs, ip_addr);
+                    
+                    if (!name_.empty()) {
+                        get_index_from_name();
+                        fill_addr_from_ifname(name_.c_str(), addresses_);
+                    }
                 }
 
                 explicit network_interface(index_type index)
                     : index_(index)
                 {
+                    fill_name_from_index();
+                    if (name_specified())
+                        fill_addr_from_ifname(name_.c_str(), addresses_);
                 }
 
                 explicit network_interface(const std::string& if_name)
                     : name_(if_name)
                 {
+                    get_index_from_name();
+                    if (name_specified())
+                        fill_addr_from_ifname(name_.c_str(), addresses_);
                 }
 
-                ip::address ip_address()
+                const std::vector<ip::address>& ip_addresses() const
                 {
-                    if (!ip_address_resolved())
-                        resolve_ip();
-
-                    return addr_;
+                    return addresses_;
                 }
 
-                index_type index()
+                index_type index() const
                 {
-                    if (!index_resolved())
-                        resolve_index();
-
                     return index_;
                 }
 
-                std::string name()
+                std::string name() const
                 {
-                    if (!name_resolved())
-                        resolve_name();
-
                     return name_;
                 }
 
@@ -72,122 +98,151 @@ namespace boost {
 
                 bool ip_address_resolved() const
                 {
-                    return !addr_.is_unspecified();
+                    return addresses_.empty();
                 }
 
-                bool name_resolved() const
+                bool name_specified() const
                 {
                     return !name_.empty();
                 }
 
-                bool is_v4()
-                {
-                    if (!ip_address_resolved())
-                        resolve_ip();
-
-                    return addr_.is_v4();
-                }
-
-                bool is_v6()
-                {
-                    if (!ip_address_resolved())
-                        resolve_ip();
-
-                    return addr_.is_v6();
-                }
-
-                ip::tcp::endpoint tcp_endpoint(short port)
-                {
-                    if (is_v6())
-                        return ip::tcp::endpoint(ip::tcp::v6(), port);
-                    else
-                        return ip::tcp::endpoint(ip::tcp::v4(), port);
-                }
-
-                ip::udp::endpoint udp_endpoint(short port)
-                {
-                    if (is_v6())
-                        return ip::udp::endpoint(ip::udp::v6(), port);
-                    else
-                        return ip::udp::endpoint(ip::udp::v4(), port);
-                }
-
               private:
-                
-                enum class resolve_hint {
-                    use_any,
-                    use_ipaddr,
-                    use_name,
-                    use_index
-                };
-                
                 void resolve_ip()
                 {
-                    if (ip_address_resolved())
-                        return;
-                    
-                    if (!name_resolved() && index_resolved()) {
-                        
-                    } else if (name_resolved()) {
-                        
-                    }
                 }
 
-                void resolve_index()
+                void get_index_from_name()
                 {
-                    if (index_resolved())
-                        return;
-                    
-                    if (!name_resolved() && ip_address_resolved()) {
-                        resolve_name();
-                    }
-                    
-                    if (name_resolved()) {
-#ifdef _WIN32
-                        
-#else
-                        index_ = ::if_nametoindex(name_.c_str());
-#endif
-                        return;
-                    }
+#    ifdef _WIN32
+
+#    else
+                    index_ = ::if_nametoindex(name_.c_str());
+#    endif
                 }
 
-                void resolve_name()
+                void fill_name_from_index()
                 {
-                    if (name_resolved())
+                    char buf[IF_NAMESIZE];
+                    ::if_indextoname(index_, buf);
+                    name_.assign(buf);
+                }
+
+                void fill_addr_from_ifname(const char* ifname,
+                                           std::vector<ip::address>& addresses)
+                {
+                    ::ifaddrs* addrs;
+                    ::getifaddrs(&addrs);
+                    fill_addr_from_ifname_recurse(addrs, ifname, addresses);
+                }
+
+                void fill_addr_from_ifname_recurse(
+                    ifaddrs* current, const char* ifname,
+                    std::vector<ip::address>& addresses)
+                {
+                    if (current == NULL)
                         return;
 
-                    if (!index_resolved() && ip_address_resolved())
-                        resolve_index();
+                    if (::strcmp(current->ifa_name, ifname) == 0) {
+                        if (current->ifa_addr->sa_family == AF_INET6) {
 
-                    if (index_resolved()) {
-                        char buf[IF_NAMESIZE];
-                        ::if_indextoname(index_, buf);
-                        name_.assign(buf);
+                            ip::address_v6::bytes_type bytes;
+                            ip::address_v6::bytes_type::value_type *bbegin,
+                                *bend;
+
+                            bbegin = reinterpret_cast<
+                                ip::address_v6::bytes_type::value_type*>(
+                                &reinterpret_cast<sockaddr_in6*>(
+                                     current->ifa_addr)
+                                     ->sin6_addr);
+                            bend = bbegin + sizeof(struct ::in6_addr);
+
+                            std::copy(bbegin, bend, bytes.begin());
+                            ip::address_v6 newaddr(bytes);
+
+                            if (std::find(
+                                    addresses.begin(), addresses.end(), newaddr)
+                                == addresses.end())
+                                addresses.push_back(newaddr);
+                        }
+                        else if (current->ifa_addr->sa_family == AF_INET) {
+
+                            ip::address_v4 newaddr(
+                                ntohl(reinterpret_cast<sockaddr_in*>(
+                                          current->ifa_addr)
+                                          ->sin_addr.s_addr));
+
+                            if (std::find(
+                                    addresses.begin(), addresses.end(), newaddr)
+                                == addresses.end())
+                                addresses.push_back(newaddr);
+                        }
                     }
+
+                    return fill_addr_from_ifname_recurse(
+                        current->ifa_next, ifname, addresses);
                 }
-                
-                ::sockaddr* find_addr_by_index(ifaddrs* current, unsigned int index)
+
+                std::string find_name_by_addr(ifaddrs* current,
+                                              const ip::address& addr)
                 {
-                    char name[IF_NAMESIZE];
-                    ::if_indextoname(index, name);
-                    return find_addr_by_name(current, name);
+                    if (addr.is_v4())
+                        return find_name_by_addr_recurse_v4(
+                            current, addr.to_v4().to_bytes());
+                    else if (addr.is_v6())
+                        return find_name_by_addr_recurse_v6(
+                            current, addr.to_v6().to_bytes());
+
+                    return {};
                 }
-                
-                ::sockaddr* find_addr_by_name(ifaddrs* current, const char* ifname)
+
+                std::string find_name_by_addr_recurse_v6(
+                    ifaddrs* current,
+                    const ip::address_v6::bytes_type& addr_bytes)
                 {
-                    if (!current)
-                        return nullptr;
-                    
-                    if (::strcmp(current->ifa_name, ifname) == 0)
-                        return current->ifa_addr;
-                    
-                    return find_addr_by_name(current->ifa_next, ifname);
+                    if (current == NULL)
+                        return {};
+
+                    if (current->ifa_addr->sa_family != AF_INET6)
+                        return find_name_by_addr_recurse_v6(
+                            current->ifa_next, addr_bytes);
+
+                    if (memcmp(&reinterpret_cast<const sockaddr_in6*>(
+                                    current->ifa_addr)
+                                    ->sin6_addr,
+                               reinterpret_cast<const in6_addr*>(
+                                   addr_bytes.data()),
+                               16)
+                        == 0)
+                        return std::string(current->ifa_name);
+
+                    return find_name_by_addr_recurse_v6(
+                        current->ifa_next, addr_bytes);
                 }
-            
+
+                std::string find_name_by_addr_recurse_v4(
+                    ifaddrs* current, const ip::address_v4::bytes_type& addr)
+                {
+                    if (current == NULL)
+                        return {};
+
+                    if (current->ifa_addr->sa_family != AF_INET)
+                        return find_name_by_addr_recurse_v4(
+                            current->ifa_next, addr);
+
+                    if (memcmp(
+                            &reinterpret_cast<sockaddr_in*>(current->ifa_addr)
+                                 ->sin_addr,
+                            addr.data(), 4)
+                        == 0)
+                        return std::string(current->ifa_name);
+
+                    return find_name_by_addr_recurse_v4(
+                        current->ifa_next, addr);
+                }
+
                 index_type index_ = 0;
                 std::string name_;
-                ip::address addr_;
+                std::vector<ip::address> addresses_;
             };
         }    // namespace mdns
     }        // namespace asio

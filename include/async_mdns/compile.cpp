@@ -14,10 +14,10 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
     void run()
     {
         boost::system::error_code ec;
-        
+
         // open browser for http services on all interfaces
-        browser_.open(boost::asio::mdns::network_interface::all(),
-                      "_http._tcp", "local", ec);
+        browser_.open(boost::asio::mdns::network_interface::all(), "_http._tcp",
+                      "local", ec);
 
         if (ec) {
             std::cerr << ec.message() << "\n";
@@ -41,7 +41,7 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
             std::cout << "Browse error: " << ec.message() << "\n";
             return;
         }
-        
+
         for (const auto& record : browser_.records()) {
             std::cout << "Found service: " << record.fqdn()
                       << " interface: " << record.interface().name() << "\n";
