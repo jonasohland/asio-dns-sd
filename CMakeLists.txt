@@ -24,5 +24,6 @@ target_link_libraries(async_dnssd INTERFACE Boost::headers)
 target_link_libraries(async_dnssd INTERFACE ${DNSSD_LIBRARIES})
 
 target_link_libraries(async_dnssd_sources PRIVATE async_dnssd)
-
 target_compile_options(async_dnssd_sources PRIVATE -Wall -Wpedantic -Wextra)
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/example)

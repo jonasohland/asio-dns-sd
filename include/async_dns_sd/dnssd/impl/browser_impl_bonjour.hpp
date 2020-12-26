@@ -1,10 +1,12 @@
 #pragma once
 
 #include "../service_record.hpp"
+#include "../waitable_descriptor.hpp"
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/beast/core/async_base.hpp>
 #include <boost/core/ignore_unused.hpp>
 #include <dns_sd.h>
+#include <iostream>
 
 namespace boost {
 namespace asio {
@@ -38,7 +40,7 @@ class browser_impl_bonjour {
     {
         DNSServiceErrorType err
             = do_open(interface.index(), type.service_type_string(), domain);
-        boost::asio::detail::throw_error(make_dnssd_error(err));
+        ::boost::asio::detail::throw_error(make_dnssd_error(err));
         filed_.assign(DNSServiceRefSockFD(sref_));
     }
 
@@ -61,34 +63,49 @@ class browser_impl_bonjour {
     {
         if (sref_)
             DNSServiceRefDeallocate(sref_);
-        filed_.close();
+        sref_ = nullptr;
+        filed_.release();
     }
 
     void close(boost::system::error_code& ec)
     {
         if (sref_)
             DNSServiceRefDeallocate(sref_);
-        filed_.close(ec);
+        sref_ = nullptr;
+        filed_.release();
     }
 
-    struct async_browse_op_base {
+    struct browse_op_base {
         virtual void write(const char*&, const char*&, const char*&,
                            network_interface::index_type)
             = 0;
 
-
         void fail(DNSServiceErrorType err)
         {
+            err_ = err;
         }
 
         void set_flags(DNSServiceFlags flags)
         {
+            flags_ = flags;
         }
+        
+        bool record_add() {
+            return flags_ & kDNSServiceFlagsAdd;
+        }
+        
+        system::error_code get_error() const
+        {
+            return make_dnssd_error(err_);
+        }
+
+        DNSServiceErrorType err_ = kDNSServiceErr_NoError;
+        DNSServiceFlags flags_   = 0;
     };
 
     template <typename Handler, typename Allocator = service_record::allocator>
     struct async_browse_operation
-        : async_browse_op_base
+        : browse_op_base
         , beast::async_base<Handler, executor_type>
         , coroutine {
 
@@ -109,10 +126,9 @@ class browser_impl_bonjour {
         void operator=(const async_browse_operation&) = delete;
         void operator=(async_browse_operation&&) = delete;
 
-        async_browse_operation(
-            Handler&& handler,
-            posix::basic_stream_descriptor<executor_type>& stream,
-            DNSServiceRef sref, async_browse_op_base** op_ctx)
+        async_browse_operation(Handler&& handler,
+                               waitable_descriptor<executor_type>& stream,
+                               DNSServiceRef sref, browse_op_base** op_ctx)
             : beast::async_base<Handler, executor_type>(
                 std::forward<Handler>(handler), stream.get_executor())
             , sref_(sref)
@@ -123,10 +139,10 @@ class browser_impl_bonjour {
             (*this)({}, false);
         }
 
-        async_browse_operation(
-            basic_service_record<Allocator>* record, Handler&& handler,
-            posix::basic_stream_descriptor<executor_type>& stream,
-            DNSServiceRef sref, async_browse_op_base** op_ctx)
+        async_browse_operation(basic_service_record<Allocator>* record,
+                               Handler&& handler,
+                               waitable_descriptor<executor_type>& stream,
+                               DNSServiceRef sref, browse_op_base** op_ctx)
             : beast::async_base<Handler, executor_type>(
                 std::forward<Handler>(handler), stream.get_executor())
             , sref_(sref)
@@ -143,12 +159,13 @@ class browser_impl_bonjour {
         {
             if (is_continuation) {
                 ::DNSServiceProcessResult(sref_);
-                this->complete(false, system::error_code());
+                this->complete(
+                    false, err, (this->flags_ & kDNSServiceFlagsAdd));
                 return;
             }
             else {
                 stream_.async_wait(
-                    posix::basic_stream_descriptor<executor_type>::wait_read,
+                    waitable_descriptor<executor_type>::wait_read,
                     std::move(*this));
             }
         }
@@ -163,9 +180,29 @@ class browser_impl_bonjour {
         }
 
         DNSServiceRef sref_;
-        async_browse_op_base** op_ctx_;
+        browse_op_base** op_ctx_;
         basic_service_record<Allocator>* rec_;
-        posix::basic_stream_descriptor<executor_type>& stream_;
+        waitable_descriptor<executor_type>& stream_;
+    };
+
+    template <typename Allocator>
+    struct sync_browse_operation: browse_op_base {
+
+        sync_browse_operation(basic_service_record<Allocator>& rec)
+            : rec_(rec)
+        {
+        }
+
+        void write(const char*& name, const char*& type, const char*& domain,
+                   network_interface::index_type if_idx) final
+        {
+            rec_.name(name);
+            rec_.type(type);
+            rec_.domain(domain);
+            rec_.if_index(if_idx);
+        }
+
+        basic_service_record<Allocator>& rec_;
     };
 
     template <typename CompletionToken, typename Allocator>
@@ -178,7 +215,7 @@ class browser_impl_bonjour {
             token);
         async_browse_operation<CompletionToken, Allocator> op(
             &record, std::move(completion.completion_handler), filed_, sref_,
-            &current_op_);
+            &op_ctx_);
         return completion.result.get();
     }
 
@@ -191,8 +228,33 @@ class browser_impl_bonjour {
         async_completion<CompletionToken, void(system::error_code)> completion(
             token);
         async_browse_operation<CompletionToken> op(
-            std::forward<CompletionToken>(token), filed_, sref_, &current_op_);
+            std::forward<CompletionToken>(token), filed_, sref_, &op_ctx_);
         return completion.result.get();
+    }
+
+    template <typename RecordType>
+    bool browse(RecordType& record)
+    {
+        sync_browse_operation<typename RecordType::allocator> op(record);
+        op_ctx_ = &op;
+        filed_.wait(waitable_descriptor<executor_type>::wait_read);
+        DNSServiceProcessResult(sref_);
+        if (auto err = op.get_error())
+            ::boost::asio::detail::throw_error(err);
+        return op.record_add();
+    }
+    
+    template <typename RecordType>
+    bool browse(RecordType& record, system::error_code& err) noexcept
+    {
+        sync_browse_operation<typename RecordType::allocator> op(record);
+        op_ctx_ = &op;
+        filed_.wait(waitable_descriptor<executor_type>::wait_read, err);
+        if (err)
+            return false;
+        DNSServiceProcessResult(sref_);
+        err = op.get_error();
+        return op.record_add();
     }
 
     ~browser_impl_bonjour()
@@ -213,7 +275,7 @@ class browser_impl_bonjour {
         return DNSServiceBrowse(
             &sref_, 0, if_idx, type.c_str(), domain.c_str(),
             &browser_impl_bonjour<Transport, Executor>::dns_service_browse_cb,
-            &current_op_);
+            &op_ctx_);
     }
 
     static void dns_service_browse_cb(
@@ -222,7 +284,7 @@ class browser_impl_bonjour {
         const char* regtype, const char* replyDomain, void* context)
     {
         ignore_unused(sdRef);
-        auto op_ctx = *reinterpret_cast<async_browse_op_base**>(context);
+        auto op_ctx = *reinterpret_cast<browse_op_base**>(context);
 
         if (errorCode != kDNSServiceErr_NoError)
             return op_ctx->fail(errorCode);
@@ -232,8 +294,8 @@ class browser_impl_bonjour {
     }
 
     DNSServiceRef sref_ = nullptr;
-    async_browse_op_base* current_op_;
-    posix::basic_stream_descriptor<Executor> filed_;
+    browse_op_base* op_ctx_;
+    waitable_descriptor<Executor> filed_;
 };
 
 }    // namespace impl

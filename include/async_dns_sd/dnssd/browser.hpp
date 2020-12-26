@@ -53,6 +53,16 @@ class basic_browser {
     {
         impl_.open(interface, type, domain, errc);
     }
+    
+    void close()
+    {
+        impl_.close();
+    }
+    
+    void close(system::error_code& err)
+    {
+        impl_.close(err);
+    }
 
     // TODO: Turn this into an asio-style composed operation
     template <typename CompletionToken, typename Allocator>
@@ -71,6 +81,18 @@ class basic_browser {
     async_browse(CompletionToken&& token)
     {
         return impl_.async_browse(std::forward<CompletionToken>(token));
+    }
+
+    template <typename RecordType>
+    bool browse(RecordType& record)
+    {
+        return impl_.browse(record);
+    }
+    
+    template <typename RecordType>
+    bool browse(RecordType& record, system::error_code& ec)
+    {
+        return impl_.browse(record, ec);
     }
 
     executor_type get_executor() BOOST_ASIO_NOEXCEPT

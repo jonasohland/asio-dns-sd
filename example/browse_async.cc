@@ -1,5 +1,5 @@
-#include "dnssd.hpp"
-#include <iostream>
+#include "custom_alloc.hpp"
+#include <async_dns_sd/dnssd.hpp>
 
 // this file is only here to force Xcode to compile the headers
 // and testing the whole thing during development
@@ -7,7 +7,7 @@
 class nbrowser: public std::enable_shared_from_this<nbrowser> {
   public:
     nbrowser(boost::asio::io_context& ctx)
-        : record_(MyAlloc<char>())
+        : record_(TestAlloc<char>())
         , browser_(ctx)
         , resolver_(ctx)
     {
@@ -46,7 +46,7 @@ class nbrowser: public std::enable_shared_from_this<nbrowser> {
             });
     }
 
-    boost::asio::dnssd::basic_service_record<MyAlloc<char>> record_;
+    boost::asio::dnssd::basic_service_record<TestAlloc<char>> record_;
     boost::asio::dnssd::tcp_browser browser_;
     boost::asio::ip::tcp::resolver resolver_;
 };

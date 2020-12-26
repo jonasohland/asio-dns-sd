@@ -1,3 +1,9 @@
-add_executable(mdns_asio_example "${CMAKE_CURRENT_LIST_DIR}/test.cc")
+add_executable(dnssd_browse_sync_example "${CMAKE_CURRENT_LIST_DIR}/browse_sync.cc")
+add_executable(dnssd_browse_async_example "${CMAKE_CURRENT_LIST_DIR}/browse_async.cc")
 
-target_link_libraries(mdns_asio_example async_mdns)
+add_executable(dnssd_linkage_test "${CMAKE_CURRENT_LIST_DIR}/link_test_a.cc" 
+                                    "${CMAKE_CURRENT_LIST_DIR}/link_test_b.cc")
+
+target_link_libraries(dnssd_browse_sync_example async_dnssd)
+target_link_libraries(dnssd_browse_async_example async_dnssd)
+target_link_libraries(dnssd_linkage_test async_dnssd)
