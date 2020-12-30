@@ -93,6 +93,7 @@ class dns_service_error_category: public boost::system::error_category {
             case service_error::timeout: return "Timeout";
             case service_error::defunct_connection: return "Defunct connetion";
             case service_error::unknown: return "Unknown";
+            default: return "Unknown";
         }
         // clang-format on
     }

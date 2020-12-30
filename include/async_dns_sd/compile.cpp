@@ -1,62 +1,48 @@
+#include "../../example/custom_alloc.hpp"
 #include "dnssd.hpp"
 #include <iostream>
 
 // this file is only here to force Xcode to compile the headers
 // and testing the whole thing during development
 
-class nbrowser: public std::enable_shared_from_this<nbrowser> {
+class browser: public std::enable_shared_from_this<browser> {
   public:
-    nbrowser(boost::asio::io_context& ctx)
-        : record_(MyAlloc<char>())
-        , browser_(ctx)
-        , resolver_(ctx)
+    explicit browser(boost::asio::io_context& io)
+    : client_(io)
+    , timer_(io)
     {
+        std::cout << boost::asio::dnssd::client::implementation::name << "\n";
     }
 
-    void run()
-    {
-        boost::system::error_code ec;
-
-        // open browser for http services on all interfaces
-        browser_.open(boost::asio::dnssd::network_interface::all(),
-                      boost::asio::dnssd::tcp_service::type("_http"), "local",
-                      ec);
-
-        if (ec) {
-            std::cerr << ec.message() << "\n";
-            return;
-        }
-
-        // start browsing
-        do_browse();
-    }
-
-    void do_browse()
-    {
+    void run() {
         auto self = this->shared_from_this();
-        browser_.async_browse(
-            record_, [self](boost::system::error_code ec, bool add) {
-                if (ec) {
-                    std::cout << ec.message() << "\n";
-                    return;
-                }
-                std::cout << (add ? "Add " : "Remove ")
-                          << "service: " << self->record_.name() << "\n";
-                self->do_browse();
-            });
+
+        client_.async_connect([self](const boost::system::error_code& ec){
+            if (ec)
+                std::cerr << "connection failed: " << ec.message() << "\n";
+            else {
+                if (self->client_.is_connected())
+                    std::cout << "is connected to daemon " << self->client_.daemon_version() << "\n";
+
+                self->timer_.expires_after(std::chrono::seconds(5));
+                self->timer_.async_wait([self](boost::system::error_code ec){
+                    std::cerr << "wait: " << ec.message() << "\n";
+                    // now we go out of scope and everything is destroyed
+                });
+            }
+        });
     }
 
-    boost::asio::dnssd::basic_service_record<MyAlloc<char>> record_;
-    boost::asio::dnssd::tcp_browser browser_;
-    boost::asio::ip::tcp::resolver resolver_;
+  private:
+    boost::asio::dnssd::client client_;
+    boost::asio::steady_timer timer_;
 };
 
 int main()
 {
     boost::asio::io_context ctx;
 
-    // start browser
-    std::make_shared<nbrowser>(ctx)->run();
+    std::make_shared<browser>(ctx)->run();
 
     for (;;) {
         try {

@@ -20,8 +20,8 @@ class waitable_descriptor: public posix::basic_descriptor<Executor> {
 
     /**
      * @brief Construct a new waitable descriptor object
-     * 
-     * @tparam ExecutionContext 
+     *
+     * @tparam ExecutionContext
      * @param context Execution context the io operations will take place on
      */
     template <typename ExecutionContext>
@@ -39,6 +39,9 @@ class waitable_descriptor: public posix::basic_descriptor<Executor> {
     ~waitable_descriptor()
     {
     }
+    
+private:
+    bool still_readable_ = false;
 };
 
 }    // namespace dnssd

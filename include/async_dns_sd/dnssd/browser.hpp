@@ -4,7 +4,7 @@
 
 #include "basic_service.hpp"
 #include "error.hpp"
-#include "impl/browser_impl.hpp"
+#include "detail/impl/impl.hpp"
 #include "network_interface.hpp"
 #include "service_record.hpp"
 #include "util.hpp"
@@ -53,21 +53,26 @@ class basic_browser {
     {
         impl_.open(interface, type, domain, errc);
     }
-    
+
     void close()
     {
         impl_.close();
     }
-    
+
     void close(system::error_code& err)
     {
         impl_.close(err);
     }
 
+    bool is_open() const noexcept
+    {
+        return impl_.is_open();
+    }
+
     // TODO: Turn this into an asio-style composed operation
     template <typename CompletionToken, typename Allocator>
     BOOST_ASIO_INITFN_RESULT_TYPE(CompletionToken,
-                                  void(boost::system::error_code))
+                                  void(boost::system::error_code, bool))
     async_browse(basic_service_record<Allocator>& record,
                  CompletionToken&& token)
     {
@@ -77,7 +82,7 @@ class basic_browser {
     // TODO: Turn this into an asio-style composed operation
     template <typename CompletionToken>
     BOOST_ASIO_INITFN_RESULT_TYPE(CompletionToken,
-                                  void(boost::system::error_code))
+                                  void(boost::system::error_code, bool))
     async_browse(CompletionToken&& token)
     {
         return impl_.async_browse(std::forward<CompletionToken>(token));
@@ -88,7 +93,7 @@ class basic_browser {
     {
         return impl_.browse(record);
     }
-    
+
     template <typename RecordType>
     bool browse(RecordType& record, system::error_code& ec)
     {

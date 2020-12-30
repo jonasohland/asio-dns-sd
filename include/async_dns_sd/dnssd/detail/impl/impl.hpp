@@ -1,10 +1,11 @@
 #pragma once
 
+#include "async_dns_sd/dnssd/config.hpp"
 #include "browser_impl_bonjour.hpp"
+#include "client_impl_bonjour.hpp"
 
-namespace boost {
-namespace asio {
-namespace dnssd {
+DNSSD_NAMESPACE_BEGIN
+
 namespace impl {
 
 namespace implementations {
@@ -26,6 +27,10 @@ template <>
 struct default_implementation_set<implementations::bonjour> {
     template <typename Transport, typename Executor>
     using browser = browser_impl_bonjour<Transport, Executor>;
+
+    template <typename Executor>
+    using client = client_impl_bonjour<Executor>;
+
 };
 
 template <>
@@ -40,6 +45,5 @@ using default_implementations
     = default_implementation_set<implementations::bonjour>;
 
 }    // namespace impl
-}    // namespace dnssd
-}    // namespace asio
-}    // namespace boost
+
+DNSSD_NAMESPACE_END

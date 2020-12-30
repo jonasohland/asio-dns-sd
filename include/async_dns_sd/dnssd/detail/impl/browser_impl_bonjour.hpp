@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../service_record.hpp"
-#include "../waitable_descriptor.hpp"
+#include "async_dns_sd/dnssd/service_record.hpp"
+#include "async_dns_sd/dnssd/waitable_descriptor.hpp"
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/beast/core/async_base.hpp>
 #include <boost/core/ignore_unused.hpp>
@@ -75,6 +75,11 @@ class browser_impl_bonjour {
         filed_.release();
     }
 
+    bool is_open() const
+    {
+        return sref_ && filed_.is_open();
+    }
+
     struct browse_op_base {
         virtual void write(const char*&, const char*&, const char*&,
                            network_interface::index_type)
@@ -89,11 +94,17 @@ class browser_impl_bonjour {
         {
             flags_ = flags;
         }
-        
-        bool record_add() {
+
+        bool is_record_add() const noexcept
+        {
             return flags_ & kDNSServiceFlagsAdd;
         }
         
+        bool more_coming() const noexcept
+        {
+            return flags_ & kDNSServiceFlagsMoreComing;
+        }
+
         system::error_code get_error() const
         {
             return make_dnssd_error(err_);
@@ -136,7 +147,10 @@ class browser_impl_bonjour {
             , stream_(stream)
         {
             *op_ctx = this;
-            (*this)({}, false);
+            if (stream_.still_readable())
+                continue_reading();
+            else
+                (*this)({}, false);
         }
 
         async_browse_operation(basic_service_record<Allocator>* record,
@@ -151,22 +165,43 @@ class browser_impl_bonjour {
             , stream_(stream)
         {
             *op_ctx = this;
-            (*this)({}, false);
+            if (stream_.still_readable())
+                continue_reading();
+            else
+                (*this)({}, false);
         }
 
         void operator()(const system::error_code& err,
                         bool is_continuation = true)
         {
+            if (err)
+                return this->complete(false, err, false);
+            
             if (is_continuation) {
-                ::DNSServiceProcessResult(sref_);
-                this->complete(
-                    false, err, (this->flags_ & kDNSServiceFlagsAdd));
-                return;
+                if (auto err
+                    = make_dnssd_error(::DNSServiceProcessResult(sref_)))
+                    return this->complete(false, err, false);
+                else {
+                    if (this->more_coming())
+                        stream_.still_readable(true);
+                    this->complete(
+                        false, this->get_error(), this->is_record_add());
+                }
             }
-            else {
+            else
                 stream_.async_wait(
                     waitable_descriptor<executor_type>::wait_read,
                     std::move(*this));
+        }
+            
+        void continue_reading()
+        {
+            if (auto err = make_dnssd_error(::DNSServiceProcessResult(sref_)))
+                return this->complete(false, err, false);
+            else {
+                if (!this->more_coming())
+                    stream_.still_readable(false);
+                return this->complete(false, err, false);
             }
         }
 
@@ -204,31 +239,38 @@ class browser_impl_bonjour {
 
         basic_service_record<Allocator>& rec_;
     };
-
+    // this is stupid
     template <typename CompletionToken, typename Allocator>
     BOOST_ASIO_INITFN_RESULT_TYPE(CompletionToken,
-                                  void(boost::system::error_code))
+                                  void(boost::system::error_code, bool))
     async_browse(basic_service_record<Allocator>& record,
                  CompletionToken&& token)
     {
-        async_completion<CompletionToken, void(system::error_code)> completion(
-            token);
-        async_browse_operation<CompletionToken, Allocator> op(
-            &record, std::move(completion.completion_handler), filed_, sref_,
-            &op_ctx_);
+        using completion_type
+            = async_completion<CompletionToken, void(system::error_code, bool)>;
+
+        completion_type completion(token);
+        async_browse_operation<
+            typename completion_type::completion_handler_type, Allocator>
+            op(&record, std::move(completion.completion_handler), filed_, sref_,
+               &op_ctx_);
+
         return completion.result.get();
     }
 
     template <typename CompletionToken>
     BOOST_ASIO_INITFN_RESULT_TYPE(CompletionToken,
-                                  void(boost::system::error_code,
-                                       const service_record&))
+                                  void(boost::system::error_code, bool))
     async_browse(CompletionToken&& token)
     {
-        async_completion<CompletionToken, void(system::error_code)> completion(
-            token);
-        async_browse_operation<CompletionToken> op(
-            std::forward<CompletionToken>(token), filed_, sref_, &op_ctx_);
+        using completion_type
+            = async_completion<CompletionToken, void(system::error_code, bool)>;
+
+        completion_type completion(token);
+        async_browse_operation<
+            typename completion_type::completion_handler_type>
+            op(std::forward<CompletionToken>(token), filed_, sref_, &op_ctx_);
+
         return completion.result.get();
     }
 
@@ -237,24 +279,29 @@ class browser_impl_bonjour {
     {
         sync_browse_operation<typename RecordType::allocator> op(record);
         op_ctx_ = &op;
+
         filed_.wait(waitable_descriptor<executor_type>::wait_read);
         DNSServiceProcessResult(sref_);
+
         if (auto err = op.get_error())
             ::boost::asio::detail::throw_error(err);
+
         return op.record_add();
     }
-    
+
     template <typename RecordType>
     bool browse(RecordType& record, system::error_code& err) noexcept
     {
         sync_browse_operation<typename RecordType::allocator> op(record);
         op_ctx_ = &op;
+
         filed_.wait(waitable_descriptor<executor_type>::wait_read, err);
         if (err)
             return false;
         DNSServiceProcessResult(sref_);
+
         err = op.get_error();
-        return op.record_add();
+        return op.is_record_add();
     }
 
     ~browser_impl_bonjour()
@@ -288,6 +335,8 @@ class browser_impl_bonjour {
 
         if (errorCode != kDNSServiceErr_NoError)
             return op_ctx->fail(errorCode);
+        
+        std::cout << "more coming " << (flags & kDNSServiceFlagsMoreComing) << "\n";
 
         op_ctx->set_flags(flags);
         op_ctx->write(serviceName, regtype, replyDomain, interfaceIndex);

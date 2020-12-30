@@ -10,3 +10,4 @@
 #include "dnssd/transport_names.hpp"
 #include "dnssd/txt_record.hpp"
 #include "dnssd/util.hpp"
+#include "dnssd/client.hpp"
